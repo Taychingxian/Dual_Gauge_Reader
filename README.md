@@ -57,17 +57,17 @@ A Roboflow-trained model scans the camera frame and returns bounding boxes for t
 </details>
 
 <details>
-<summary><b>⭕ Stage 2 — Center Locking & Tracking</b> (Hough Circles + Manual 'L' Lock)</summary>
+<summary><b>⭕ Stage 2 — Center & Detector Locking</b> (Hough Circles + Manual 'L' Detector Lock)</summary>
 <br>
 
 Dial center detection uses multi-pass Hough circles constrained by mutual co-location with the needle bounding box, plus contour fallback.
-- **Auto-Lock**: Locks when consecutive frame candidates have a spread ≤ 35px.
-- **Manual Lock (`L`)**: Instantly freeze the detected candidate center without waiting.
-- **Unlock (`C`)**: Reset the locked center and resume dynamic candidate acquisition.
+- **Auto-Lock Center**: Locks when consecutive frame candidates have a spread ≤ 35px.
+- **Manual Full Detector Lock (`L`)**: Instantly freeze the dial center and the needle orientation sector, preventing the detector from flipping 180° or tracking the wrong direction.
+- **Unlock (`C`)**: Reset locked center and needle detector to resume dynamic candidate acquisition.
 
 ```
-Candidate detected: (352, 556)  →  "CENTER: ACQUIRING [Press 'L' to lock]"
-User presses 'L':               →  "CENTER: MANUAL LOCK [Press 'C' to unlock]"
+Acquiring needle/center:        →  "ACQUIRING CENTER 3/5 [Press 'L' to lock]"
+User presses 'L':               →  "DETECTOR: FULLY LOCKED [Press 'C' to unlock]"
 ```
 
 </details>
@@ -156,8 +156,8 @@ python main_dual_gauge_reader.py
 |:---:|--------|:-----------:|
 | `G` | Switch gauge profile | 🔄 UNIJIN ↔ Badotherm |
 | `S` | Switch camera | 📷 Built-in ↔ USB |
-| `L` | Lock dial center | 🔒 Freeze candidate center |
-| `C` | Unlock dial center | ⭕ Resume dynamic center search |
+| `L` | Lock whole detector | 🔒 Freeze dial center & needle orientation (rejects opposite 180° flip) |
+| `C` | Unlock detector | ⭕ Resume dynamic acquisition for center & needle |
 | `Q` | Quit | 🚪 Exit application |
 
 ---
