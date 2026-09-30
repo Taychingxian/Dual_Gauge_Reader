@@ -1,277 +1,399 @@
+<a id="top"></a>
+
 <div align="center">
 
 # 🔍 Industrial Gauge Reader
 
-### Turn any analog pressure gauge into a digital sensor — with just a camera.
+### Point. Capture. Measure.
 
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://python.org)
-[![OpenCV](https://img.shields.io/badge/OpenCV-4.8%2B-5C3EE8?logo=opencv&logoColor=white)](https://opencv.org)
-[![Roboflow](https://img.shields.io/badge/Roboflow-Inference-6706CE?logo=roboflow&logoColor=white)](https://roboflow.com)
-[![Tests](https://img.shields.io/badge/Tests-42%20passed-brightgreen?logo=pytest&logoColor=white)](#-running-tests)
+**Analog dials → live readings → measurable accuracy**
 
----
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![OpenCV](https://img.shields.io/badge/Vision-OpenCV-5C3EE8?logo=opencv&logoColor=white)
+![Profiles](https://img.shields.io/badge/Gauge_profiles-2-0891B2)
+![Tolerance](https://img.shields.io/badge/Default_tolerance-2%25_of_span-F59E0B)
 
-**No hardware modification** · **Real-time readings** · **Multi-gauge support** · **4-tier detection fallback**
+[🚀 Get started](#setup-and-run) · [🎮 Controls](#live-controls) · [📸 Capture](#capture-an-accuracy-dataset) · [📊 Evaluate](#run-accuracy-evaluation) · [🧭 Read results](#understand-the-reports)
 
 </div>
 
-## 🎯 What Does This Do?
+Read UNIJIN and Badotherm analog pressure gauges with a webcam, capture clean
+photos and live readings, and compare predictions against manually entered
+reference values.
 
-Point a webcam at an analog pressure gauge → get live digital readings on screen.
-
-```
-┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌─────────────┐
-│  📷 Camera  │ ──▶ │  🤖 ML Model │ ──▶ │  📐 CV Math  │ ──▶ │  📊 Reading │
-│   Feed      │     │   Detection  │     │   Analysis   │     │   Display   │
-└─────────────┘     └──────────────┘     └──────────────┘     └─────────────┘
-```
-
-> **Example**: A UNIJIN gauge showing ≈72 PSI → the system detects the dial, locks the center, traces the needle, and displays `PSI: 72.14` in real time.
-
----
-
-## 🧠 How It Works
-
-The system uses a **4-stage pipeline** with intelligent fallbacks:
+| I want to… | Start here |
+|---|---|
+| See a live gauge reading | [Launch the reader](#setup-and-run) |
+| Record the exact displayed value | [Press S and label the sample](#capture-an-accuracy-dataset) |
+| Find my accuracy percentage | [Evaluate live readings](#run-accuracy-evaluation) |
+| Understand an error or a failed sample | [Report guide](#understand-the-reports) · [Troubleshooting](#troubleshooting) |
 
 ```mermaid
 flowchart LR
-    A["📷 Frame"] --> B["🎯 Gauge Detection"]
-    B --> C["⭕ Center Locking"]
-    C --> D["📌 Needle Detection"]
-    D --> E["📊 Stabilized Reading"]
-
-    style A fill:#1a1a2e,color:#fff
-    style B fill:#16213e,color:#fff
-    style C fill:#0f3460,color:#fff
-    style D fill:#533483,color:#fff
-    style E fill:#e94560,color:#fff
+    A["📷 Aim camera"] --> B["🎯 Read gauge"]
+    B --> C["📸 Press S"]
+    C --> D["✍️ Enter actual value"]
+    D --> E["📊 Evaluate accuracy"]
+    style A fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e
+    style B fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e
+    style C fill:#dcfce7,stroke:#16a34a,color:#14532d
+    style D fill:#fef3c7,stroke:#d97706,color:#78350f
+    style E fill:#ede9fe,stroke:#7c3aed,color:#4c1d95
 ```
 
-<details>
-<summary><b>🔬 Stage 1 — Gauge Detection</b> (ML Model)</summary>
-<br>
-
-A Roboflow-trained model scans the camera frame and returns bounding boxes for the gauge dial and needle. This gives us a rough location to work with.
-
-</details>
-
-<details>
-<summary><b>⭕ Stage 2 — Center & Detector Locking</b> (Hough Circles + Manual 'L' Detector Lock)</summary>
-<br>
-
-Dial center detection uses multi-pass Hough circles constrained by mutual co-location with the needle bounding box, plus contour fallback.
-- **Auto-Lock Center**: Locks when consecutive frame candidates have a spread ≤ 35px.
-- **Manual Full Detector Lock (`L`)**: Instantly freeze the dial center and the needle orientation sector, preventing the detector from flipping 180° or tracking the wrong direction.
-- **Unlock (`C`)**: Reset locked center and needle detector to resume dynamic candidate acquisition.
-
-```
-Acquiring needle/center:        →  "ACQUIRING CENTER 3/5 [Press 'L' to lock]"
-User presses 'L':               →  "DETECTOR: FULLY LOCKED [Press 'C' to unlock]"
-```
-
-</details>
-
-<details>
-<summary><b>📌 Stage 3 — Needle Detection & Longer Pointer Resolution</b></summary>
-<br>
-
-Analog needles typically have a **longer pointer** reaching towards the dial scale and an **opposite shorter counterweight/tail**. The detection engine strictly resolves the longer needle branch:
-
-| Strategy | Method | Purpose |
-|:--------:|--------|---------|
-| 🥇 | **Box-focused Hough lines** | Detects line segments inside needle ROI, scoring by radial reach from hub |
-| 🥈 | **PCA eigenvector fitting** | Dark-pixel principal axis fit, selecting the farther endpoint |
-| 🥉 | **Pointer geometry vector** | Extracts hub-to-tip segment from bounding box features |
-| 🛡️ | **Opposite tail rejection** | Filters out shorter counterweights (115°–180° opposite) to ensure the true pointer is read |
-
-</details>
-
-<details>
-<summary><b>📊 Stage 4 — Stabilized Reading</b> (State Machine)</summary>
-<br>
-
-Raw angle readings are noisy. The tracking state machine smooths them:
-
-```mermaid
-stateDiagram-v2
-    [*] --> SEARCHING : No gauge detected
-    SEARCHING --> LOCKING : Needle found
-    LOCKING --> TRACKED : 2+ consistent readings
-    TRACKED --> HOLDING : Angle jumped > 10°
-    HOLDING --> TRACKED : Angle stabilizes
-    TRACKED --> SEARCHING : Lost for 20+ frames
-    HOLDING --> SEARCHING : Lost for 20+ frames
-```
-
-The `TRACKED` state applies a **low-pass filter** (`0.20 × delta`) — smooth enough to kill jitter, fast enough to follow real needle movement.
-
-</details>
+*Preview this file with **Ctrl + Shift + V** in VS Code or view it on GitHub.
+Expandable sections work in compatible Markdown viewers; diagram rendering depends on Mermaid support.*
 
 ---
 
-## 🎛️ Supported Gauges
+## Supported gauges
 
-| Gauge | Primary Scale | Secondary Scale | Status |
-|:------|:-------------|:----------------|:------:|
-| **UNIJIN** | 0 – 150 PSI | 0 – 10 kgf/cm² | ✅ |
-| **Badotherm** | -1 – 15 bar | -14.5 – 217.5 PSI | ✅ |
-| *Your gauge* | *Any range* | *Any range* | [Add it! ↓](#-adding-a-new-gauge) |
+| Gauge | Primary scale | Secondary scale | Default evaluation tolerance |
+|---|---|---|---|
+| UNIJIN | 0–150 PSI | 0–10 kgf/cm² | ±3 PSI |
+| Badotherm | −1–15 bar | −14.5–217.5 PSI | ±0.32 bar |
 
----
+Default tolerance is **2% of the measuring span** (`maximum − minimum`).
+This is the project's testing criterion, not an industry certification.
 
-## 🚀 Quick Start
+## Setup and run
 
-### Prerequisites
+**Your first reading in three steps: install → configure → launch.**
 
-- Python 3.10+
-- A webcam (built-in or USB)
-- A [Roboflow](https://roboflow.com) API key
+Requirements: Python 3.10+, a webcam, and a Roboflow API key. Open a terminal
+in the project directory and install the dependencies:
 
-### 1️⃣ Install
-
-```bash
-git clone https://github.com/your-username/Gauge-Reader.git
-cd Gauge-Reader
-pip install -r requirements.txt
+```powershell
+python -m pip install -r requirements.txt
 ```
 
-### 2️⃣ Configure
-
-Create a `.env` file in the project root:
+Create `.env` in the project directory:
 
 ```env
 ROBOFLOW_API_KEY=your_api_key_here
 ```
 
-### 3️⃣ Run
+Start the live reader:
 
-```bash
+```powershell
 python main_dual_gauge_reader.py
 ```
 
-### 🎮 Controls
+Model loading may require network access and an initial download. Gauge profiles,
+model IDs, and detection settings are defined in `config.py`.
 
-| Key | Action | Description |
-|:---:|--------|:-----------:|
-| `G` | Switch gauge profile | 🔄 UNIJIN ↔ Badotherm |
-| `S` | Switch camera | 📷 Built-in ↔ USB |
-| `L` | Lock whole detector | 🔒 Freeze dial center & needle orientation (rejects opposite 180° flip) |
-| `C` | Unlock detector | ⭕ Resume dynamic acquisition for center & needle |
-| `Q` | Quit | 🚪 Exit application |
+## Live controls
 
----
+Use these keys while the OpenCV window has focus. Uppercase and lowercase work.
 
-## 📁 Project Structure
+| Key | Action |
+|---|---|
+| <kbd>S</kbd> 📸 | Save a clean photo and the valid displayed primary reading to the active gauge dataset |
+| <kbd>V</kbd> 📷 | Switch camera between configured inputs |
+| <kbd>G</kbd> 🔄 | Switch gauge profile between UNIJIN and Badotherm |
+| <kbd>L</kbd> 🔒 | Lock detector center and needle angle |
+| <kbd>C</kbd> 🔓 | Unlock and reacquire the detector |
+| <kbd>Q</kbd> 🚪 | Quit |
 
+<details>
+<summary><strong>🔬 Under the hood — how a needle becomes a number</strong></summary>
+
+
+The reader uses separate gauge and needle models, computer-vision fallbacks,
+angle-to-value conversion, and temporal filtering. Detection fallbacks include
+box-focused Hough lines, PCA, pointer geometry, a box-vector fallback, and
+full-face Hough detection. If the gauge model is unavailable, the reader uses
+computer vision to locate the center.
+
+Tracking uses fresh observations to stabilize readings. Camera switching resets
+cached observations and locks; gauge switching resets tracking for the new
+profile. Out-of-range angles trigger a visual warning and, where available, a
+Windows notification sound.
+
+</details>
+
+## Capture an accuracy dataset
+
+1. Select the correct profile with **G** and align the gauge in the camera view.
+2. Press **S** for each sample. A green saved message appears for two seconds.
+3. After the session, open the corresponding labels CSV and enter the actual
+   readings in `expected`.
+4. Save as CSV. Close Excel before taking more snapshots because it may lock the file.
+
+| Profile | Photos | Labels |
+|---|---|---|
+| UNIJIN | `accuracy_data/unijin_photos/` | `accuracy_data/unijin_labels.csv` |
+| Badotherm | `accuracy_data/badotherm_photos/` | `accuracy_data/badotherm_labels.csv` |
+
+Folders and headers are created automatically. Photos are named
+`unijin_YYYYMMDD_HHMMSS.jpg` or `badotherm_YYYYMMDD_HHMMSS.jpg`. A numeric suffix
+prevents overwriting captures taken within the same second.
+
+Photos contain the original camera frame without overlays. Capturing does not
+change tracking state, locks, or filter histories. Saving uses synchronous local
+file I/O; its duration depends on the disk and image size.
+
+<details open>
+<summary><strong>📝 CSV guide — what you enter vs. what the computer saves</strong></summary>
+
+```csv
+image,expected,live_predicted
+unijin_photos/unijin_20260930_113527.jpg,120,116.25
 ```
+
+- `image`: path relative to the labels CSV.
+- `expected`: your independent actual reading, in **PSI for UNIJIN** or **bar for Badotherm**.
+- `live_predicted`: the valid primary reading displayed when S was pressed,
+  saved to the same two decimal places as the display.
+
+The app leaves `expected` blank for you to fill. Do not copy the computer's
+prediction into this column. Locking, invalid, or absent readings leave
+`live_predicted` blank. Existing two-column CSVs are upgraded on the next
+snapshot while preserving labels; older live predictions cannot be recovered.
+
+Fill every `expected` cell or remove unused rows, including example rows such as
+`../Unijin.jpg,,`. Labels from a human dial reading measure agreement with that
+reading; labels from a calibrator also include the physical gauge's error.
+
+</details>
+
+<details>
+<summary><strong>✅ Before evaluating — session checklist</strong></summary>
+
+- [ ] Selected the correct gauge profile before capture.
+- [ ] Entered an independent actual value in every `expected` cell.
+- [ ] Used PSI for UNIJIN or bar for Badotherm.
+- [ ] Filled or removed unused example rows.
+- [ ] Saved the CSV; kept `live_predicted` as recorded.
+- [ ] Included varied pressure levels and conditions for a meaningful test.
+
+*Use this as a checklist; whether boxes are editable depends on your Markdown viewer.*
+
+</details>
+
+## Run accuracy evaluation
+
+In VS Code, choose **Terminal → New Terminal** and run the full command from the
+project directory. **Run Code** alone does not supply the required arguments.
+
+| Choose your test | What it measures | Models needed? |
+|---|---|---|
+| **Live readings** — `--live` | Values displayed when you pressed S | No |
+| **Photo analysis** — omit `--live` | Fresh predictions from saved photos | Yes |
+
+### Evaluate the readings recorded during capture
+
+```powershell
+python evaluate_accuracy.py accuracy_data/unijin_labels.csv --profile UNIJIN --live
+python evaluate_accuracy.py accuracy_data/badotherm_labels.csv --profile Badotherm --live
+```
+
+`--live` compares saved `live_predicted` values with `expected`. It does not load
+models, open a camera, or reprocess photos. The current configuration still
+requires the existing API key.
+
+<details>
+<summary><strong>🖼️ Alternative: evaluate photos independently</strong></summary>
+
+```powershell
+python evaluate_accuracy.py accuracy_data/unijin_labels.csv --profile UNIJIN
+python evaluate_accuracy.py accuracy_data/badotherm_labels.csv --profile Badotherm
+```
+
+Without `--live`, each image gets a fresh prediction using the detection models.
+This does not use live tracking history, smoothing, or manual locks, so its
+results may differ from the captured display values.
+
+</details>
+
+### Your pass/fail rule
+
+Both modes default to **±2% of span**: **±3 PSI** for UNIJIN and **±0.32 bar** for
+Badotherm. A sample passes when its absolute error is at most this tolerance,
+including the boundary.
+
+> **Worked example:** UNIJIN actual reading = **100 PSI**.
+> Predictions from **97 to 103 PSI** pass. A reading of **105 PSI** fails.
+>
+> Badotherm actual reading = **1.30 bar**.
+> Predictions from **0.98 to 1.62 bar** pass.
+
+<details>
+<summary><strong>⚙️ Advanced: tolerance overrides, validation, and output folders</strong></summary>
+
+`--tolerance` is an optional override in **primary units, not percent**.
+For example, `--tolerance 2` means ±2 PSI for UNIJIN or ±2 bar for Badotherm.
+Omit it to retain the 2%-of-span default.
+
+```powershell
+# Check labels and recorded live values without creating a report
+python evaluate_accuracy.py accuracy_data/unijin_labels.csv --profile UNIJIN --live --check-only
+
+# Check labels and image decoding without loading detection models
+python evaluate_accuracy.py accuracy_data/unijin_labels.csv --profile UNIJIN --check-only
+
+# Show supported profiles or command options
+python evaluate_accuracy.py --list-profiles
+python evaluate_accuracy.py --help
+```
+
+Use `--output folder_name` to select a different results directory.
+
+</details>
+
+## Understand the reports
+
+### Where is my accuracy percentage?
+
+Open **`summary.json` → `accuracy_rate_percent`**.
+
+**Illustrative report excerpt — not a measured result from this project:**
+
+```json
+{
+  "accuracy_rate_percent": 80.0,
+  "accuracy_rate_explanation": "4 out of 5 readings were accurate within +/- 3 PSI of your actual readings. Missing or invalid readings count as not passing.",
+  "tolerance": 3.0,
+  "unit": "PSI",
+  "tolerance_basis": "2% of gauge span",
+  "tolerance_percent_of_span": 2.0
+}
+```
+
+**✅ ✅ ✅ ✅ ❌ → 4 / 5 passed → 80% within tolerance**
+
+Each evaluation creates a timestamped folder under `accuracy_results/`:
+
+| File | Contents |
+|---|---|
+| `summary.json` | Accuracy percentage, plain-English explanation, tolerance, and metrics |
+| `readings.csv` | Actual value, prediction, absolute error, status, and pass/fail for each sample |
+| `0001_overlay.jpg`, etc. | Detection overlays on decoded images in photo mode only |
+
+The JSON starts with `accuracy_rate_percent` and `accuracy_rate_explanation`.
+For example, **80% means 4 of 5 samples passed the chosen tolerance**. It does
+not mean that every predicted value is “80% correct.”
+
+<details open>
+<summary><strong>📐 Metric decoder — MAE, RMSE, bias, and pass rate</strong></summary>
+
+| JSON field | Meaning |
+|---|---|
+| `accuracy_rate_percent` | Percentage of all samples within tolerance |
+| `tolerance` | Allowed absolute error in the gauge's primary units |
+| `tolerance_basis` | Default: `2% of gauge span` |
+| `tolerance_percent_of_span` | Default: `2.0` |
+| `easy_to_read` | Plain-English interpretation of results |
+| `accuracy_metrics.MAE` | Average absolute error; lower is better |
+| `accuracy_metrics.RMSE` | Error measure giving larger mistakes more weight |
+| `accuracy_metrics.bias` | Average prediction minus actual; negative means reading low |
+| `accuracy_metrics.maximum_absolute_error` | Largest absolute error |
+| `accuracy_metrics.pass_rate` | Same percentage as `accuracy_rate_percent` |
+| `accuracy_metrics.usable_reading_rate` | Percentage that could be evaluated; this is not accuracy |
+
+</details>
+
+<details>
+<summary><strong>🧮 How missing readings and failures affect the score</strong></summary>
+
+Each metric includes its value, unit, and explanation. Error metrics use only
+usable readings; pass rate includes all samples. Missing or invalid live
+predictions and photo-processing failures count as not passing. Blank or
+nonnumeric `expected` values stop evaluation until corrected. With no usable
+readings, error metrics are `null`, not zero.
+
+A successful evaluation exit code means at least one reading was usable, not
+that every sample passed. All-invalid evaluations return exit code 1.
+
+</details>
+
+Collect independent samples across pressure levels, lighting, camera angles,
+and separate sessions. Repeated snapshots of one tracked reading provide
+limited evidence. Keep final evaluation samples separate from those used for
+calibration. See [ACCURACY_TESTING.md](ACCURACY_TESTING.md) for further details.
+
+## Troubleshooting
+
+<details open>
+<summary><strong>🛠️ Something went wrong? Find the message below</strong></summary>
+
+| Message or issue | What to do |
+|---|---|
+| `labels CSV and --profile are required` | Run the complete evaluation command in the terminal |
+| `Line N: expected must be a number` | Fill that row's actual reading, or remove an unused example row, then save |
+| `CSV has no live_predicted column` | Capture new samples with the updated reader; old live values are unavailable |
+| Blank `live_predicted` | Capture when a valid reading is displayed; blanks count as failed samples in live evaluation |
+| Snapshot CSV append failed | Check the console details and close Excel; a saved photo may still be available for recovery |
+
+</details>
+
+## Project files
+
+<details>
+<summary><strong>🗂️ Explore the project map</strong></summary>
+
+```text
 Gauge-Reader/
-│
-├── 🚀 Application & Tools
-│   ├── main_dual_gauge_reader.py    # Live gauge reading application (Dual-model pipeline)
-│   └── calibrate_gauge.py           # Interactive angle calibration tool
-│
-├── 📦 Core Modules
-│   ├── config.py          # API keys, model IDs, gauge profiles
-│   ├── camera.py          # Camera open/switch with DirectShow fallback
-│   ├── detection.py       # Gauge center + needle tip detection (Longer needle resolution)
-│   ├── measurement.py     # Angle math + value computation + limit checks
-│   └── tracking.py        # TrackingState class with manual lock & state machine
-│
-├── 🧪 Tests & Reference
-│   ├── test_measurement.py    # Unit tests for angle math and filtering
-│   └── gauge.jpg              # Reference test image
-│
-└── ⚙️ Config
-    ├── .env                   # API key (git-ignored)
-    ├── .gitignore
-    └── requirements.txt
+├── main_dual_gauge_reader.py  # Live application and keyboard controls
+├── dataset_snapshot.py       # Clean JPEG capture and CSV appending/migration
+├── evaluate_accuracy.py      # Live-value and independent-photo evaluation
+├── calibrate_gauge.py        # Interactive angle calibration
+├── config.py                 # Gauge profiles, model IDs, API configuration
+├── camera.py                 # Camera opening and fallback
+├── detection.py              # Center and needle detection
+├── measurement.py            # Angle conversion and filtering helpers
+├── tracking.py               # Tracking state and locks
+├── test_measurement.py
+├── test_tracking_updates.py
+├── test_dataset_snapshot.py
+├── test_evaluate_accuracy.py
+├── accuracy_data/            # Photos and ground-truth labels
+├── accuracy_results/         # Generated reports
+├── ACCURACY_TESTING.md
+├── DATASET_SNAPSHOT_SPEC.md   # Original snapshot feature specification
+├── requirements.txt
+└── .env                     # Local API key; do not commit
 ```
 
----
+</details>
 
-## 🔧 Adding a New Gauge
+## Calibration and new profiles
 
-### Step 1: Calibrate Interactively
+<details>
+<summary><strong>🔧 Tune a gauge profile or add your own</strong></summary>
 
-```bash
-python calibrate_gauge.py
+Run `python calibrate_gauge.py`. Align the camera squarely with the dial, use
+`0` to record the minimum-scale angle, `m` for the maximum-scale angle, and `p`
+to print the profile settings. Follow the calibration tool's own displayed
+controls; its camera-switch key differs from the live reader.
+
+Add or update the profile in `config.py`, then select it with G in the live
+reader. For a new gauge, set both scale endpoints and units consistently.
+Snapshot routing currently supports UNIJIN and Badotherm only; extend
+`dataset_snapshot.py` to capture another gauge profile.
+
+</details>
+
+## Run code tests
+
+Install pytest if it is not already available, then run:
+
+```powershell
+python -m pip install pytest
+python -m pytest -q
 ```
 
-1. Align the gauge squarely in camera view.
-2. Point/align needle to the **Zero Mark** and press `0` to save `MIN_ANGLE`.
-3. Point/align needle to the **Full-Scale Mark** and press `m` to save `MAX_ANGLE`.
-4. Press `p` — the calibrator prints the ready-to-copy profile code directly to the console!
-
-### Step 2: Add Profile
-
-Open [`config.py`](config.py) and paste the printed profile into `GAUGE_PROFILES`:
-
-```python
-"My Gauge (0-100 PSI)": {
-    "MIN_ANGLE": 225.0,       # ← saved with '0'
-    "MAX_ANGLE": 315.0,       # ← saved with 'm' (Sweep: 270.0°)
-    "MIN_VAL_1": 0.0,  "MAX_VAL_1": 100.0,  "UNIT_1": "PSI",
-    "MIN_VAL_2": 0.0,  "MAX_VAL_2": 6.895,  "UNIT_2": "bar",
-    "SHOW_SECONDARY": True,
-},
-```
-
-### Step 3: Run & Verify
-
-```bash
-python main_dual_gauge_reader.py
-```
-
-Press `G` to cycle to your new profile. ✅
-
----
-
-## 🧪 Running Tests
-
-```bash
-pytest test_measurement.py -v
-```
-
-```
-42 passed in 0.17s ✅
-```
-
-| Test Suite | Count | What's Tested |
-|-----------|:-----:|---------------|
-| `TestCircularDistance` | 8 | Wraparound, symmetry, negative/large angles |
-| `TestSignedAngleDelta` | 6 | CW/CCW rotation, ±180° boundary |
-| `TestCircularMean` | 6 | Wraparound mean, vector cancellation |
-| `TestValueFromAngle` | 7 | Both profiles, dead-zone detection, clamping |
-| `TestAngleInScaleArc` | 8 | Margin behavior, arc wraparound |
-| `TestAngleOnNeedleSide` | 5 | Tolerance, default values, wraparound |
-
----
-
-## 🚨 Safety & Limit Monitoring
-
-The reader continuously validates measured needle angles against the active gauge's calibrated scale:
-- **Real-time Boundary Detection**: Triggers immediately if needle angle travels outside `[MIN_ANGLE, MAX_ANGLE]`.
-- **Audio Chime & Visual Badge**: Displays high-contrast red warning badge `Exceed the gauge limit` and sounds a Windows warning beep.
-- **Fail-safe Filtering**: Suppresses transient single-frame spikes via rolling median window.
-
-
-## 🏗️ Tech Stack
-
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| 🖼️ Image Processing | OpenCV | Hough transforms, edge detection, rendering |
-| 🔢 Numerics | NumPy | Array operations, median filtering |
-| 🤖 Object Detection | Roboflow Inference | Gauge & needle bounding boxes |
-| 🔐 Config | python-dotenv | Secure API key management |
-| 🧪 Testing | pytest | Unit test framework |
+The tests cover measurement math, tracking, camera switching, dataset snapshots,
+CSV compatibility, and evaluation metrics using synthetic data and mocked
+hardware/models. They verify implementation behavior. To measure accuracy on
+your actual gauges, run `evaluate_accuracy.py` with completed labels.
 
 ---
 
 <div align="center">
 
-**Built for industrial environments where digital readouts aren't available.**
+**Capture clean frames. Record real values. Measure the difference.**
 
-*Point. Detect. Read.* 🔍
+[Back to top ↑](#top) · [Detailed testing guide](ACCURACY_TESTING.md)
 
 </div>
