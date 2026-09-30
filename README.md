@@ -144,9 +144,6 @@ Create a `.env` file in the project root:
 ROBOFLOW_API_KEY=your_api_key_here
 ```
 
-> [!CAUTION]
-> Never commit your `.env` file to Git. It's already in `.gitignore`.
-
 ### 3️⃣ Run
 
 ```bash
