@@ -84,15 +84,32 @@ model IDs, and detection settings are defined in `config.py`.
 
 ## Live controls
 
+The gauge model assists center detection when available. If it cannot load or
+find a gauge, the reader retains the computer-vision fallback around needle
+detections. Gauge confirmation is not mandatory.
+
+The blue needle line and main numbers use the same filtered angle. A thin
+magenta line and `Raw` readout show the observed angle and converted values,
+including kgf/cm² for UNIJIN. `fresh` means a new observation; `cached` means
+the last observation is being reused. An `INVALID` raw value is outside the
+configured arc and should not be treated as a pressure measurement.
+
+The display now filters the angle once, without an additional value median and
+EMA. This reduces lag but can expose more detection jitter. If raw and filtered
+readings both settle at the wrong value, inspect geometry and calibration rather
+than adding a fixed correction.
+
 Use these keys while the OpenCV window has focus. Uppercase and lowercase work.
 
 | Key | Action |
 |---|---|
-| <kbd>S</kbd> 📸 | Save a clean photo and the valid displayed primary reading to the active gauge dataset |
+| <kbd>P</kbd> 🌀 | Toggle Reading Mode between **Polar Annulus Unwrapping** (tilt-immune) and **Geometric Angle** (see [POLAR_UNWRAPPING.md](POLAR_UNWRAPPING.md)) |
+| <kbd>S</kbd> 📸 | Save a clean photo, a detector-overlay photo, and the valid displayed primary reading to the active gauge dataset |
 | <kbd>V</kbd> 📷 | Switch camera between configured inputs |
 | <kbd>G</kbd> 🔄 | Switch gauge profile between UNIJIN and Badotherm |
 | <kbd>L</kbd> 🔒 | Lock detector center and needle angle |
 | <kbd>C</kbd> 🔓 | Unlock and reacquire the detector |
+| <kbd>Z</kbd> ⚖️ | Zero tare to current needle resting position |
 | <kbd>Q</kbd> 🚪 | Quit |
 
 <details>
@@ -102,8 +119,14 @@ Use these keys while the OpenCV window has focus. Uppercase and lowercase work.
 The reader uses separate gauge and needle models, computer-vision fallbacks,
 angle-to-value conversion, and temporal filtering. Detection fallbacks include
 box-focused Hough lines, PCA, pointer geometry, a box-vector fallback, and
-full-face Hough detection. If the gauge model is unavailable, the reader uses
-computer vision to locate the center.
+full-face Hough detection. When the gauge model is unavailable, computer vision
+provides center detection around the needle candidate.
+
+Before locking a center, the reader searches locally for a circular needle hub
+to refine the model's coarse dial center. Box-based needle detection also fits
+dark cross-section midpoints to estimate the pointer centerline instead of an
+edge. Ambiguous hubs and weak or displaced line fits retain the original
+estimate. Photo evaluation uses the same refinements; no manual clicks are needed.
 
 Tracking uses fresh observations to stabilize readings. Camera switching resets
 cached observations and locks; gauge switching resets tracking for the new
@@ -113,6 +136,13 @@ Windows notification sound.
 </details>
 
 ## Capture an accuracy dataset
+
+Tracking holds isolated angle jumps; almost opposite directions require four
+agreeing fresh observations before acceptance. Unverified box-only tips are
+excluded from live readings. Orange `HELD` readings show the age of the last
+accepted observation; the tracking line also shows this age when the needle is
+missing. Held readings or readings older than one second leave `live_predicted`
+blank in snapshots. The snapshot JSON records `reading_age_seconds`.
 
 1. Select the correct profile with **G** and align the gauge in the camera view.
 2. Press **S** for each sample. A green saved message appears for two seconds.
@@ -129,7 +159,9 @@ Folders and headers are created automatically. Photos are named
 `unijin_YYYYMMDD_HHMMSS.jpg` or `badotherm_YYYYMMDD_HHMMSS.jpg`. A numeric suffix
 prevents overwriting captures taken within the same second.
 
-Photos contain the original camera frame without overlays. Capturing does not
+Each capture also saves a matching `_detector.jpg` photo with the detector overlay
+and readings visible in the camera window. The CSV references the clean original
+photo for evaluation. Capturing does not
 change tracking state, locks, or filter histories. Saving uses synchronous local
 file I/O; its duration depends on the disk and image size.
 
@@ -358,6 +390,13 @@ Gauge-Reader/
 </details>
 
 ## Calibration and new profiles
+
+For systematic pressure errors with a fixed camera, use the measured-angle
+calibration tool, [scale_calibration.py](scale_calibration.py). It supports UNIJIN
+references in kgf/cm² and Badotherm references in bar, previews a fitted scale,
+and optionally saves angles to `gauge_calibration.json` for automatic loading.
+See [the calibration instructions](ACCURACY_TESTING.md#calibrate-a-repeatable-scale-error).
+Actual reference measurements are required; no correction is guessed automatically.
 
 <details>
 <summary><strong>🔧 Tune a gauge profile or add your own</strong></summary>
