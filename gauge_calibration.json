@@ -1,0 +1,36 @@
+{
+  "UNIJIN (0-150 PSI / 0-10 kgf/cm2)": {
+    "MIN_ANGLE": 134.19938929341026,
+    "MAX_ANGLE": 52.856431949710895,
+    "calibration_samples": 17,
+    "calibration_mae": 1.7155329910598092,
+    "calibration_max_error": 4.342332607989185,
+    "source": "Provisional least-squares fit to 17 user-labeled raw-angle captures; expected_kgf_cm2 is authoritative, not rounded PSI labels",
+    "provisional": true,
+    "normal_acceptance_limit_exceeded": true,
+    "note": "Worst residual exceeds 2% of PSI span. Saved as provisional at user request; verify on independent readings. No samples excluded. Errors are training residuals, not test accuracy.",
+    "degrees_per_kgf_cm2": 26.422898550982875,
+    "mae_kgf_cm2": 0.12061390588814665,
+    "max_error_kgf_cm2": 0.3052961961352211,
+    "previous_calibration_backup": "accuracy_results\\unijin_calibration_20261001_125821\\previous_gauge_calibration.json"
+  },
+  "Badotherm (-1 to 15 bar)": {
+    "MIN_ANGLE": 131.97625,
+    "MAX_ANGLE": 38.09625,
+    "source": "Offset correction from user-reported simultaneous actual/display pairs: 2/2.5 and 6/6.5 bar",
+    "reading_correction_bar": -0.5,
+    "angle_shift_degrees": 8.31625,
+    "reference_pairs": [
+      {
+        "actual_bar": 2,
+        "previous_display_bar": 2.5
+      },
+      {
+        "actual_bar": 6,
+        "previous_display_bar": 6.5
+      }
+    ],
+    "previous_calibration_backup": "accuracy_results/badotherm_offset_20261001_135943/previous_gauge_calibration.json",
+    "note": "Both endpoints shifted equally to preserve the 16 bar span and -1 bar minimum. Based on two rounded live readings; independent validation at zero and other pressures remains pending."
+  }
+}
