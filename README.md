@@ -12,7 +12,7 @@
 ![Vision](https://img.shields.io/badge/Vision-OpenCV-5C3EE8?logo=opencv&logoColor=white)
 ![Model](https://img.shields.io/badge/Model-Local_YOLOv8_(best.pt)-10B981)
 ![Profiles](https://img.shields.io/badge/Gauge_profiles-2-0891B2)
-![Tolerance](https://img.shields.io/badge/Default_tolerance-2%25_of_span-F59E0B)
+![Tolerance](https://img.shields.io/badge/Default_tolerance-1%25_of_span-F59E0B)
 
 [🚀 Get started](#setup-and-run) · [🎮 Controls](#live-controls) · [🧠 Local Model](#local-deep-learning-model-bestpt) · [📸 Capture](#capture-an-accuracy-dataset) · [📊 Evaluate](#run-accuracy-evaluation)
 
@@ -52,10 +52,30 @@ Expandable sections work in compatible Markdown viewers; diagram rendering depen
 
 | Gauge | Primary scale | Secondary scale | Default Reading Mode | Evaluation Tolerance |
 |---|---|---|---|---|
-| **UNIJIN** | 0–150 PSI | 0–10 kgf/cm² | **`[ANGLE]`** (Geometric Angle) | ±3 PSI (2% span) |
-| **Badotherm** | −1–15 bar | −14.5–217.5 PSI | **`[POLAR]`** (Annulus Unwrap) | ±0.32 bar (2% span) |
+| **UNIJIN** | 0–150 PSI | 0–10 kgf/cm² | **`[ANGLE]`** (Geometric Angle) | ±1.5 PSI (1% span) |
+| **Badotherm** | −1–15 bar | −14.5–217.5 PSI | **`[POLAR]`** (Annulus Unwrap) | ±0.16 bar (1% span) |
 
-Default tolerance is **2% of the measuring span** (`maximum − minimum`).
+Default tolerance is **1% of the measuring span** (`maximum − minimum`).
+
+Final readings require a confirmed center and eight fresh needle observations.
+Acquisition averages the latest eight angles, allows bounded pixel noise for
+short distant needles (up to 6 degrees), and requires estimated uncertainty
+of the mean to remain within 2 degrees. This tests repeatability, not absolute
+accuracy. Up to two missed detections retain samples; three misses clear them.
+Large changes require six agreeing observations.
+When the pointer-center landmark is missing, the center of the validated gauge
+box supplies the pivot. Hub landmarks are accepted only near that same dial's
+center. This fallback cannot recover a dial that is itself absent or rejected.
+Cached frames do not count. A marked dial and a continuous dark shaft must be
+visible; weak needles, background objects, and clipped dials are rejected.
+A physically validated needle outside the scale triggers "Exceed gauge limit"
+and cannot produce a final numerical reading. The gate supports the light-faced, dark-needle
+gauges in this project. Its thresholds still need live validation under actual
+lighting and camera conditions.
+
+The blue needle and numerical reading use the same stabilized angle in both
+modes. A held needle is orange; acquisition, rejected observations, and readings
+older than one second do not produce a final numerical result or saved live value.
 
 ---
 
@@ -240,7 +260,7 @@ results may differ from the captured display values.
 
 ### Your pass/fail rule
 
-Both modes default to **±2% of span**: **±3 PSI** for UNIJIN and **±0.32 bar** for
+Both modes default to **±1% of span**: **±1.5 PSI** for UNIJIN and **±0.16 bar** for
 Badotherm. A sample passes when its absolute error is at most this tolerance,
 including the boundary.
 
@@ -255,7 +275,7 @@ including the boundary.
 
 `--tolerance` is an optional override in **primary units, not percent**.
 For example, `--tolerance 2` means ±2 PSI for UNIJIN or ±2 bar for Badotherm.
-Omit it to retain the 2%-of-span default.
+Omit it to retain the 1%-of-span default.
 
 ```powershell
 # Check labels and recorded live values without creating a report
@@ -284,11 +304,11 @@ Open **`summary.json` → `accuracy_rate_percent`**.
 ```json
 {
   "accuracy_rate_percent": 80.0,
-  "accuracy_rate_explanation": "4 out of 5 readings were accurate within +/- 3 PSI of your actual readings. Missing or invalid readings count as not passing.",
-  "tolerance": 3.0,
+  "accuracy_rate_explanation": "4 out of 5 readings were accurate within +/- 1.5 PSI of your actual readings. Missing or invalid readings count as not passing.",
+  "tolerance": 1.5,
   "unit": "PSI",
-  "tolerance_basis": "2% of gauge span",
-  "tolerance_percent_of_span": 2.0
+  "tolerance_basis": "1% of gauge span",
+  "tolerance_percent_of_span": 1.0
 }
 ```
 
@@ -313,8 +333,8 @@ not mean that every predicted value is “80% correct.”
 |---|---|
 | `accuracy_rate_percent` | Percentage of all samples within tolerance |
 | `tolerance` | Allowed absolute error in the gauge's primary units |
-| `tolerance_basis` | Default: `2% of gauge span` |
-| `tolerance_percent_of_span` | Default: `2.0` |
+| `tolerance_basis` | Default: `1% of gauge span` |
+| `tolerance_percent_of_span` | Default: `1.0` |
 | `easy_to_read` | Plain-English interpretation of results |
 | `accuracy_metrics.MAE` | Average absolute error; lower is better |
 | `accuracy_metrics.RMSE` | Error measure giving larger mistakes more weight |
